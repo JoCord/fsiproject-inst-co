@@ -1,0 +1,232 @@
+#!/bin/sh
+#
+#   mount and umount fsi server
+#
+#   This program is free software; you can redistribute it and/or modify it under the 
+#   terms of the GNU General Public License as published by the Free Software Foundation;
+#   either version 3 of the License, or (at your option) any later version.
+#
+#   This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
+#   without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+#   See the GNU General Public License for more details.
+#  
+#   You should have received a copy of the GNU General Public License along with this program; 
+#   if not, see <http://www.gnu.org/licenses/>.
+#
+ver="1.00.03 - 13.8.2015"
+retc=0
+ls=""
+progname=${0##*/}
+SOURCE="${BASH_SOURCE[0]}"
+DIR="$( dirname "$SOURCE" )"
+while [ -h "$SOURCE" ]; do 
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+  DIR="$( cd -P "$( dirname "$SOURCE"  )" && pwd )"
+done
+
+export progdir="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+lxdir="/var/fsi"
+lxconf="$lxdir/lxconf.sh"
+lxfunc="/usr/bin/lxfunc.sh"
+
+function help() {
+   echo
+   tput setaf 2
+   echo " Help for $progname - $ver"    
+   tput sgr0
+   echo
+   echo " mount or unmount fsi srvlate ks dir"
+   echo
+   tput setaf 3
+   echo "  Parameter:"
+   tput sgr0
+   echo "   -m          mount fsi srv"
+   echo "   -u          unmount fsi srv"
+   echo "   -c          check if mounted"
+   echo
+   tput setaf 3
+   echo "  Optional Parameter:"
+   tput sgr0
+   echo "   -q                 quiet mode"
+   echo "   -1                 debug mode"
+   echo "   -2                 trace mode"
+   echo "   -l <logfile>       other logfile"
+   echo
+   tput setaf 3
+   echo "  Return Code:"
+   tput sgr0
+   echo "    1 = help"
+   echo "    > = different meaning"
+   echo
+   tput setaf 3
+   echo "  Example:"
+   tput sgr0
+   echo "    $progname -m"
+   echo
+}
+
+quietmode=""
+job=""
+
+while getopts ":mucl:hq12" optname; do
+   #tracemsg "Option $optname has value $OPTARG"
+   case "$optname" in
+      "h")
+         help
+         exit 1
+        ;;
+      "q")
+         export deb2scr="no"
+         quietmode=" -q "
+         debmsg " quiet mode"
+        ;;
+      "1")
+         export deb2scr="yes"
+         export debug="debug"
+         quietmode=" -1 "
+         debmsg " debug mode"
+        ;;
+      "2")
+         export deb2scr="yes"
+         export debug="trace"
+         quietmode=" -2 "
+         debmsg " trace mode"
+        ;;
+      "l")
+         export logfile="$OPTARG"
+         debmsg " log: $logfile"
+        ;;
+      "m")
+         job="mount"
+        ;;
+      "u")
+         job="umount"
+        ;;
+      "c")
+         job="check"
+        ;;
+      "?")
+        errmsg "Unknown option $OPTARG"
+        ;;
+      ":")
+        errmsg "No argument value for option $OPTARG"
+        ;;
+      *)
+      # Should not occur
+        errmsg "Unknown error while processing options"
+        ;;
+   esac
+done
+
+if [ -z $job ]; then
+   help
+   exit 2
+fi
+
+if [ -f $lxfunc ]; then
+#   echo Load $lxfunc  
+   . $lxfunc
+else
+   echo Cannot find $lxfunc >/root/lxerror
+   exit 99
+fi
+if [ -f $lxconf ]; then 
+#   echo Load $lxconf
+   . $lxconf
+else
+   echo Cannot find $lxconf >/root/lxerror
+   exit 99
+fi
+
+fsi_mount() {
+   ls="$ls  "
+   local retc=0
+   tracemsg "$ls Function [$FUNCNAME] startet"
+
+   if [ -d $kspath/log ]; then
+      infmsg "$ls  fsi server already mounted"
+   else
+      infmsg "$ls  mount fsi server"
+      tracemsg "$ls   fsi srv srv: $fsisrv"
+      tracemsg "$ls   fsi srv mount: $fsimount"
+      tracemsg "$ls   ks path: $kspath"
+      tracemsg "$ls   cmd: mount -t nfs $fsisrv:$fsimount $kspath"
+      mount -t nfs $fsisrv:$fsimount $kspath
+      retc=$?
+      if [ $retc -eq 0 ]; then
+         infmsg "$ls  mount ok"
+      else
+         errmsg "cannot mount fsi srv server - abort"
+      fi
+   fi   
+
+   tracemsg "$ls Function [$FUNCNAME] ended"
+   ls=${ls:0:${#ls}-2}
+   return $retc
+}
+
+fsi_umount() {
+   ls="$ls  "
+   local retc=0
+   tracemsg "$ls Function [$FUNCNAME] startet"
+
+   if [ ! -d $kspath/log ]; then
+      infmsg "$ls  fsi server is already not mounted"
+   else
+      infmsg "$ls  unmount fsi server"
+      tracemsg "$ls   ks path: $kspath"
+      tracemsg "$ls   cmd: umount $kspath"
+      umount $kspath
+      retc=$?
+      if [ $retc -eq 0 ]; then
+         infmsg "$ls  mount ok"
+      else
+         errmsg "cannot mount fsi srv server - abort"
+      fi
+   fi   
+
+   tracemsg "$ls Function [$FUNCNAME] ended"
+   ls=${ls:0:${#ls}-2}
+   return $retc
+}
+
+fsi_check() {
+   ls="$ls  "
+   local retc=0
+   tracemsg "$ls Function [$FUNCNAME] startet"
+
+   if [ -d $kspath/log ]; then
+      infmsg "$ls  fsi server mounted"
+   else
+      infmsg "$ls  fsi server not mounted"
+      retc=1
+   fi   
+
+   tracemsg "$ls Function [$FUNCNAME] ended"
+   ls=${ls:0:${#ls}-2}
+   return $retc
+}
+
+infmsg "Start $progname ver $ver"
+case "$job" in
+   "mount")
+      fsi_mount
+      retc=$?
+     ;;
+   "umount")
+      fsi_umount
+      retc=$?
+     ;;
+   "check")
+      fsi_check
+      retc=$?
+     ;;
+   *)
+     errmsg "Unknown job - abort"
+     retc=99
+     ;;
+esac
+infmsg "$progname end - rc=$retc"
+exit $retc
